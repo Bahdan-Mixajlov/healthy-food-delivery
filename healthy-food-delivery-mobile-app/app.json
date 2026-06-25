@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "healthy-food-delivery-mobile-app",
+    "slug": "healthy-food-delivery-mobile-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Приложению нужен доступ к микрофону для голосового поиска блюд.",
+        "NSSpeechRecognitionUsageDescription": "Приложению нужно разрешение на распознавание речи для голосового ввода."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["android.permission.RECORD_AUDIO"],
+      "package": "com.anonymous.healthyfooddeliverymobileapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "./withAndroidVoicePatch",
+      "expo-font",
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Приложению нужен доступ к микрофону для голосового поиска блюд.",
+          "speechRecognitionPermission": "Приложению нужно разрешение на распознавание речи для голосового ввода."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "585a2703-4111-4df5-b280-3afcb69e729d"
+      }
+    }
+  }
+}

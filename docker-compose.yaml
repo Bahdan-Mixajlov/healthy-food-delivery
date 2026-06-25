@@ -1,0 +1,55 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: healthy_food_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  backend:
+    build: ./backend
+    container_name: healthy_food_backend
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+
+  admin:
+    build: ./admin-panel
+    container_name: healthy_food_admin
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+  client-web:
+    build: ./healthy-food-delivery-mobile-app
+    container_name: healthy_food_client_web
+    restart: always
+    ports:
+      - "8086:80"
+    depends_on:
+      - backend
+
+  courier-web:
+    build: ./courier-mobile-app
+    container_name: healthy_food_courier_web
+    restart: always
+    ports:
+      - "8085:80"
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
