@@ -504,34 +504,16 @@ export default function AIChatScreen({ route, navigation }: any) {
         )}
 
         {/* Строка ввода */}
+        {/* Строка ввода */}
         <View
           style={[styles.inputContainer, { paddingBottom: inputPaddingBottom }]}
         >
-          <View style={styles.inputRow}>
-            <View style={styles.searchBarContainer}>
-              <SearchBar
-                placeholder="Спросите ИИ (например: 'ужин с белком')"
-                value={inputQuery}
-                onChangeText={setInputQuery}
-                onSubmitEditing={() => handleSendMessage(inputQuery)}
-              />
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.sendButton,
-                !isInputEmpty && styles.sendButtonActive,
-              ]}
-              onPress={() => handleSendMessage(inputQuery)}
-              activeOpacity={0.7}
-              disabled={isInputEmpty || isLoading}
-            >
-              <FontAwesome6
-                name="paper-plane"
-                size={18}
-                color={isInputEmpty ? "#9CA3AF" : "#FFFFFF"}
-              />
-            </TouchableOpacity>
-          </View>
+          <SearchBar
+            placeholder="Спросите ИИ (например: 'ужин с белком')"
+            value={inputQuery}
+            onChangeText={setInputQuery}
+            onSubmitEditing={() => handleSendMessage(inputQuery)}
+          />
         </View>
       </KeyboardAvoidingView>
     </View>

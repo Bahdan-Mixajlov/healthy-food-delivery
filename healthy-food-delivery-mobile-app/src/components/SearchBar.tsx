@@ -19,7 +19,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { FontAwesome } from "@expo/vector-icons";
+import { FontAwesome, FontAwesome6 } from "@expo/vector-icons";
 import { COLORS } from "../constants/theme";
 
 // --------------------------------------------------------------------------
@@ -77,9 +77,6 @@ export interface SearchBarProps {
 }
 
 // ── Хелперы динамической загрузки нативного модуля ──────────────────────────
-// Voice загружается только на нативных платформах, чтобы Web-бандл
-// не падал при попытке импортировать нативный модуль.
-
 type VoiceModule = typeof import("@react-native-voice/voice").default;
 
 let _voiceModule: VoiceModule | null = null;
@@ -97,7 +94,7 @@ async function getVoice(): Promise<VoiceModule | null> {
   }
 }
 
-// ── Хелпер запроса разрешения на микрофон (нативные платформы) ──────────────
+// ── Хелпер запроса разрешения на микрофон ───────────────────────────────────
 async function requestMicPermission(): Promise<boolean> {
   if (Platform.OS === "web") return true;
   try {
@@ -105,7 +102,6 @@ async function requestMicPermission(): Promise<boolean> {
     const { granted } = await Audio.requestPermissionsAsync();
     return granted;
   } catch {
-    // Если expo-av недоступен, пробуем продолжить — модуль Voice сам запросит.
     return true;
   }
 }
@@ -121,38 +117,64 @@ export default function SearchBar({
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Анимация пульса для иконки микрофона во время записи
+  // Анимация масштаба (пульсации) только для ауры
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
-  // Ссылка на Web SpeechRecognition
+  // Анимация прозрачности (дыхания) только для ауры
+  const auraOpacityAnim = useRef(new Animated.Value(1)).current;
+  const auraLoop = useRef<Animated.CompositeAnimation | null>(null);
+
   const webRecognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  // ── Пульс-анимация ──────────────────────────────────────────────────────
+  // ── Пульс-анимация и дыхание ауры ──────────────────────────────────────
   const startPulse = useCallback(() => {
+    // Плавная пульсация размера ауры
     pulseLoop.current = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.35,
-          duration: 500,
+          toValue: 1.3,
+          duration: 700,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 500,
+          duration: 700,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
       ]),
     );
+
+    // Плавное затухание/свечение ауры
+    auraLoop.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(auraOpacityAnim, {
+          toValue: 0.2,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(auraOpacityAnim, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
     pulseLoop.current.start();
-  }, [pulseAnim]);
+    auraLoop.current.start();
+  }, [pulseAnim, auraOpacityAnim]);
 
   const stopPulse = useCallback(() => {
     pulseLoop.current?.stop();
+    auraLoop.current?.stop();
     pulseAnim.setValue(1);
-  }, [pulseAnim]);
+    auraOpacityAnim.setValue(1);
+  }, [pulseAnim, auraOpacityAnim]);
 
   // ── Очистка при размонтировании ─────────────────────────────────────────
   useEffect(() => {
@@ -198,21 +220,18 @@ export default function SearchBar({
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "ru-RU";
-    recognition.interimResults = true; // Слушать и выдавать текст в реальном времени
-    recognition.continuous = false; // Останавливать после одной фразы
+    recognition.interimResults = true;
+    recognition.continuous = false;
 
     webRecognitionRef.current = recognition;
 
     recognition.onresult = (event: any) => {
-      // Надежный способ собрать весь распознанный текст в одну строку
       const currentTranscript = Array.from(event.results)
         .map((result: any) => result[0].transcript)
         .join("");
 
-      // Выводим в консоль, чтобы убедиться, что браузер нас слышит
       console.log("Браузер распознал:", currentTranscript);
 
-      // Передаем текст в HomeScreen
       if (onChangeText) {
         onChangeText(currentTranscript);
       }
@@ -271,7 +290,6 @@ export default function SearchBar({
       console.log("=== ГОЛОС [5]: Ошибка при очистке (это нормально) ===", e);
     }
 
-    // Привязываем логи ко ВСЕМ возможным нативным событиям
     Voice.onSpeechStart = (e) =>
       console.log("=== ГОЛОС EVENT: Начало записи (onSpeechStart) ===", e);
     Voice.onSpeechRecognized = (e) =>
@@ -384,7 +402,7 @@ export default function SearchBar({
         showSoftInputOnFocus={!isListening}
       />
 
-      {/* Кнопка очистки (если есть текст и не записываем) */}
+      {/* Кнопка очистки */}
       {!!value && !isListening && (
         <Pressable
           onPress={() => onChangeText?.("")}
@@ -397,7 +415,19 @@ export default function SearchBar({
         </Pressable>
       )}
 
-      {/* Кнопка микрофона (показываем, если нет текста ИЛИ идет запись) */}
+      {/* Кнопка отправки (отображается при наличии текста) */}
+      {!!value && !isListening && (
+        <Pressable
+          onPress={onSubmitEditing}
+          style={styles.sendBtn}
+          accessibilityLabel="Отправить"
+          accessibilityRole="button"
+        >
+          <FontAwesome6 name="paper-plane" size={15} color="#FFFFFF" />
+        </Pressable>
+      )}
+
+      {/* Кнопка микрофона */}
       {(!value || isListening) && (
         <Pressable
           onPress={handleMicPress}
@@ -408,12 +438,21 @@ export default function SearchBar({
           }
           accessibilityRole="button"
         >
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <FontAwesome name="microphone" size={18} color={micColor} />
-          </Animated.View>
+          {/* Пульсирующая фоновая аура (эффект дыхания) */}
+          {isListening && (
+            <Animated.View
+              style={[
+                styles.recordingAura,
+                {
+                  opacity: auraOpacityAnim,
+                  transform: [{ scale: pulseAnim }],
+                },
+              ]}
+            />
+          )}
 
-          {/* Красная точка-индикатор */}
-          {isListening && <View style={styles.recordingDot} />}
+          {/* Иконка микрофона */}
+          <FontAwesome name="microphone" size={18} color={micColor} />
         </Pressable>
       )}
     </View>
@@ -445,19 +484,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  sendBtn: {
+    marginLeft: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingRight: 2, // Оптическое центрирование иконки самолетика
+  },
   micBtn: {
     marginLeft: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
   },
-  recordingDot: {
+  recordingAura: {
     position: "absolute",
-    top: -3,
-    right: -3,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: COLORS.error,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(239, 68, 68, 0.18)",
   },
 });
