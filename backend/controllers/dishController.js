@@ -1,118 +1,30 @@
 import { db } from "../config/db.js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { LRUCache } from "lru-cache"; // npm install lru-cache
-import dotenv from "dotenv";
+import { LRUCache } from "lru-cache";
 import snowball from "node-snowball";
-import { encode as toToon, decode as toonDecode } from "@toon-format/toon"; // npm install @toon-format/toon
+import * as aiProvider from "../providers/gemini.js";
 
-dotenv.config();
-
-/* ════════════════════════════════════════════════════════════════════════════
- * МИГРАЦИИ БД — выполнить один раз перед использованием новых фич
- * ════════════════════════════════════════════════════════════════════════════
- *
- * 1. Флаги и атрибуты блюд (без миграции — фильтры молча пропускаются):
- *
- *   ALTER TABLE dish
- *     ADD COLUMN is_vegetarian  TINYINT(1)  DEFAULT 0,
- *     ADD COLUMN is_vegan       TINYINT(1)  DEFAULT 0,
- *     ADD COLUMN is_gluten_free TINYINT(1)  DEFAULT 0,
- *     ADD COLUMN is_dairy_free  TINYINT(1)  DEFAULT 0,
- *     ADD COLUMN is_spicy       TINYINT(1)  DEFAULT 0,
- *     ADD COLUMN cooking_method VARCHAR(50) NULL,
- *     ADD COLUMN meal_time      VARCHAR(30) NULL;
- *
- *   -- cooking_method: 'запеченное' | 'вареное' | 'жареное' | 'на пару' | 'сырое' | 'тушеное'
- *   -- meal_time:      'завтрак'    | 'обед'    | 'ужин'    | 'перекус'
- *
- * 2. Лог поисков (аналитика — без таблицы логирование молча пропускается):
- *
- *   CREATE TABLE IF NOT EXISTS search_log (
- *     id             INT AUTO_INCREMENT PRIMARY KEY,
- *     endpoint       VARCHAR(20)  NOT NULL,
- *     query_raw      VARCHAR(300) NOT NULL,
- *     search_params  JSON,
- *     results_count  INT          DEFAULT 0,
- *     was_fallback   TINYINT(1)   DEFAULT 0,
- *     used_relaxed   TINYINT(1)   DEFAULT 0,
- *     used_ranking   TINYINT(1)   DEFAULT 0,
- *     gemini_cached  TINYINT(1)   DEFAULT 0,
- *     created_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
- *     INDEX idx_query   (query_raw),
- *     INDEX idx_results (results_count),
- *     INDEX idx_created (created_at)
- *   );
- *
- * ════════════════════════════════════════════════════════════════════════════
- */
-
-// ── Guard ────────────────────────────────────────────────────────────────────
-if (!process.env.GEMINI_API_KEY) {
-  throw new Error("[dishController] GEMINI_API_KEY не задан в .env");
-}
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// ── Константы ────────────────────────────────────────────────────────────────
-const DIET_CALORIE_LIMIT = 450;
 const SMART_SEARCH_LIMIT = 15;
 const CHAT_DISHES_LIMIT = 5;
 const HISTORY_LIMIT = 6;
-const GEMINI_TIMEOUT_MS = 8000;
-const GEMINI_RETRIES = 1;
 const MAX_HISTORY_CHARS = 1500;
-const GEMINI_CACHE_TTL_MS = 15 * 60 * 1000; // 15 минут
-const RESULTS_CACHE_TTL_MS = 5 * 60 * 1000; //  5 минут
-const GEMINI_CACHE_MAX = 500;
+const RESULTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const RESULTS_CACHE_MAX = 200;
 
-// ── Константы ранжирования кандидатов ────────────────────────────────────────
-const CANDIDATE_POOL_SMART = 30; // пул для /api/dishes/search
-const CANDIDATE_POOL_CHAT = 20; // пул для /api/dishes/ai-chat
-const RANK_DESC_TRUNCATE = 60; // обрезка description в промпте ранжирования (экономия токенов)
+const CANDIDATE_POOL_SMART = 30;
+const CANDIDATE_POOL_CHAT = 20;
 
-// ── Переключатель формата сериализации для A/B сравнения токенов ────────────
-// Влияет на кандидатов блюд (rankCandidatesWithGemini) и историю чата
-// (buildHistoryContext) — это ВХОДЯЩИЕ данные в промпт. ОТВЕТ модели в чате
-// теперь ВСЕГДА в настоящем TOON (см. buildChatPrompt/parseChatToonResponse)
-// — это отдельная ось, не завязанная на этот переключатель, потому что вывод
-// в JSON и вывод в TOON — взаимоисключающие режимы generationConfig
-// (responseMimeType), а не вопрос "какой сериализатор вызвать на объекте".
-const SERIALIZATION_FORMAT = "toon"; // "toon" | "json"
-
-const serializeData = (data) =>
-  SERIALIZATION_FORMAT === "toon" ? toToon(data) : JSON.stringify(data);
-
-// ── LRU Кэши ────────────────────────────────────────────────────────────────
-// Кэш ответов Gemini: одинаковые запросы не тратят токены повторно
-const geminiCache = new LRUCache({
-  max: GEMINI_CACHE_MAX,
-  ttl: GEMINI_CACHE_TTL_MS,
-});
-// Кэш результатов SQL: популярные запросы не нагружают БД
 const resultsCache = new LRUCache({
   max: RESULTS_CACHE_MAX,
   ttl: RESULTS_CACHE_TTL_MS,
 });
 
-// ── Определяем доступность флагов блюд (проверяем один раз при старте) ───────
 let DISH_FLAGS_ENABLED = false;
 (async () => {
   try {
     await db.execute("SELECT is_vegetarian FROM dish LIMIT 1");
     DISH_FLAGS_ENABLED = true;
-    console.log(
-      "[dishController] Флаги блюд (is_vegetarian и т.д.): ✅ включены",
-    );
-  } catch {
-    console.log(
-      "[dishController] Флаги блюд: ⚠️  отключены (выполни миграцию из комментария)",
-    );
-  }
+  } catch {}
 })();
-
-// ════════════════════════════════════════════════════════════════════════════
-// UTILS
-// ════════════════════════════════════════════════════════════════════════════
 
 const sanitizeInput = (raw) =>
   String(raw)
@@ -120,163 +32,6 @@ const sanitizeInput = (raw) =>
     .slice(0, 300)
     .replace(/["\\`]/g, " ");
 
-// Находит первый {...} в тексте и парсит его — устойчиво к обёрткам ```json
-const safeJsonParse = (text) => {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1)
-    throw new Error("JSON-объект не найден в ответе ИИ");
-  return JSON.parse(text.substring(start, end + 1).trim());
-};
-
-/**
- * Валидирует и нормализует search_params из ответа Gemini.
- * Защищает от строки "null", NaN, отрицательных чисел, булевых строк.
- */
-const validateSearchParams = (raw) => {
-  const empty = {
-    search_query: null,
-    exclude_query: null,
-    min_calories: null,
-    max_calories: null,
-    min_proteins: null,
-    max_price: null,
-    category: null,
-    sort_by: null,
-    query_logic: "OR",
-    is_vegetarian: null,
-    is_vegan: null,
-    is_gluten_free: null,
-    is_dairy_free: null,
-    is_spicy: null,
-    cooking_method: null,
-    meal_time: null,
-  };
-  if (!raw || typeof raw !== "object") return empty;
-
-  const isStr = (v) =>
-    typeof v === "string" &&
-    v.trim() !== "" &&
-    v.trim().toLowerCase() !== "null";
-
-  const posNum = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) &&
-      String(v).trim().toLowerCase() !== "null" &&
-      n > 0
-      ? n
-      : null;
-  };
-
-  const bool = (v) => (v === true || v === "true" ? true : null);
-
-  const VALID_SORTS = ["price_asc", "price_desc", "kcal_asc", "kcal_desc"];
-  const rawSort = isStr(raw.sort_by) ? raw.sort_by.trim().toLowerCase() : null;
-  const rawLogic = isStr(raw.query_logic)
-    ? raw.query_logic.trim().toUpperCase()
-    : "OR";
-
-  const VALID_COOKING = [
-    "запеченное",
-    "вареное",
-    "жареное",
-    "на пару",
-    "сырое",
-    "тушеное",
-  ];
-  const VALID_MEAL = ["завтрак", "обед", "ужин", "перекус"];
-  const rawCooking = isStr(raw.cooking_method)
-    ? raw.cooking_method.trim().toLowerCase()
-    : null;
-  const rawMeal = isStr(raw.meal_time)
-    ? raw.meal_time.trim().toLowerCase()
-    : null;
-
-  return {
-    search_query: isStr(raw.search_query) ? raw.search_query.trim() : null,
-    exclude_query: isStr(raw.exclude_query) ? raw.exclude_query.trim() : null,
-    min_calories: posNum(raw.min_calories),
-    max_calories: posNum(raw.max_calories),
-    min_proteins: posNum(raw.min_proteins),
-    max_price: posNum(raw.max_price),
-    category: isStr(raw.category) ? raw.category.trim() : null,
-    sort_by: VALID_SORTS.includes(rawSort) ? rawSort : null,
-    query_logic: rawLogic === "AND" ? "AND" : "OR",
-    is_vegetarian: bool(raw.is_vegetarian),
-    is_vegan: bool(raw.is_vegan),
-    is_gluten_free: bool(raw.is_gluten_free),
-    is_dairy_free: bool(raw.is_dairy_free),
-    is_spicy: bool(raw.is_spicy),
-    cooking_method: VALID_COOKING.includes(rawCooking) ? rawCooking : null,
-    meal_time: VALID_MEAL.includes(rawMeal) ? rawMeal : null,
-  };
-};
-
-/** Валидирует массив search_slots, каждый прогоняет через validateSearchParams */
-const validateSearchSlots = (raw) => {
-  if (!Array.isArray(raw) || raw.length === 0) return null;
-  const slots = raw
-    .map(validateSearchParams)
-    .filter((s) => s.search_query || s.category || s.exclude_query);
-  return slots.length >= 2 ? slots : null;
-};
-
-// ════════════════════════════════════════════════════════════════════════════
-// ПАРСИНГ НАСТОЯЩЕГО TOON-ОТВЕТА ЧАТА
-// ════════════════════════════════════════════════════════════════════════════
-//
-// В отличие от предыдущей версии (плоские "ключ=значение;ключ2=значение2" —
-// самодельный протокол, не имеющий отношения к спецификации TOON), здесь
-// используется НАСТОЯЩИЙ decode() из @toon-format/toon. Промпт учит модель
-// синтаксису на примерах, сгенерированных тем же toToon(), что гарантирует
-// отсутствие расхождений между "как научили" и "что реально понимает парсер".
-//
-// Компромисс: в отличие от responseMimeType:"application/json", формат TOON
-// не enforced на уровне API — модель генерирует свободный текст, и синтаксис
-// может быть нарушен (сбитый отступ, неэкранированная запятая в табличном
-// массиве). При сбое decode() — безопасный откат к нейтральным дефолтам,
-// а не попытка угадать структуру регулярками.
-const safeToonDecode = (rawText) => {
-  const cleaned = rawText
-    .replace(/```[a-zA-Z0-9]*\n?/g, "")
-    .replace(/```/g, "")
-    .trim();
-
-  try {
-    const parsed = toonDecode(cleaned);
-    return {
-      search_params:
-        parsed?.search_params && typeof parsed.search_params === "object"
-          ? parsed.search_params
-          : null,
-      search_slots: Array.isArray(parsed?.search_slots)
-        ? parsed.search_slots
-        : null,
-      recommendation:
-        typeof parsed?.recommendation === "string"
-          ? parsed.recommendation
-          : null,
-      not_found_message:
-        typeof parsed?.not_found_message === "string"
-          ? parsed.not_found_message
-          : null,
-    };
-  } catch (err) {
-    console.error(
-      "[safeToonDecode] сбой разбора TOON-ответа модели, откат к дефолтам:",
-      err.message,
-    );
-    return {
-      search_params: null,
-      search_slots: null,
-      recommendation: null,
-      not_found_message:
-        "Извините, произошла техническая ошибка при обработке ответа. Попробуйте переформулировать запрос.",
-    };
-  }
-};
-
-/** Стемминг одного слова (Snowball, русский язык) */
 const stemWord = (word) => {
   try {
     return (
@@ -288,7 +43,6 @@ const stemWord = (word) => {
   }
 };
 
-/** Разбивает фразу на слова, стеммирует, возвращает уникальные стеммы */
 const stemPhrase = (phrase) => {
   if (!phrase?.trim()) return [];
   return [
@@ -302,7 +56,6 @@ const stemPhrase = (phrase) => {
   ];
 };
 
-/** Кэш категорий на 10 минут */
 let _categoriesCache = null;
 let _cacheExpiry = 0;
 const fetchCategories = async () => {
@@ -318,11 +71,9 @@ const fetchCategories = async () => {
   }
 };
 
-/** Экранирует спецсимволы SQL LIKE */
 const escapeLike = (str) =>
   str.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 
-/** Нормализует запрос для использования как ключ кэша */
 const normalizeQueryKey = (q) =>
   q
     .toLowerCase()
@@ -330,7 +81,6 @@ const normalizeQueryKey = (q) =>
     .replace(/\s+/g, " ")
     .replace(/[!?.,']/g, "");
 
-/** Санитизирует историю чата (с защитой search_params от инъекций) */
 const sanitizeHistory = (rawHistory) => {
   if (!Array.isArray(rawHistory)) return [];
   const filtered = rawHistory
@@ -341,7 +91,7 @@ const sanitizeHistory = (rawHistory) => {
       role: h.role === "user" ? "user" : "assistant",
       content: sanitizeInput(h.content),
       ...(h.search_params
-        ? { search_params: validateSearchParams(h.search_params) }
+        ? { search_params: aiProvider.validateSearchParams(h.search_params) }
         : {}),
     }));
   let totalChars = 0;
@@ -353,118 +103,6 @@ const sanitizeHistory = (rawHistory) => {
   }
   return trimmed.slice(-HISTORY_LIMIT);
 };
-
-/** Вызывает fn() с таймаутом + retry */
-const geminiWithRetry = async (
-  fn,
-  retries = GEMINI_RETRIES,
-  ms = GEMINI_TIMEOUT_MS,
-) => {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await Promise.race([
-        fn(),
-        new Promise((_, rej) =>
-          setTimeout(() => rej(new Error("Gemini timeout")), ms),
-        ),
-      ]);
-    } catch (err) {
-      if (attempt === retries) throw err;
-      console.warn(
-        `[geminiWithRetry] попытка ${attempt + 1} провалилась:`,
-        err.message,
-      );
-      await new Promise((r) => setTimeout(r, 500));
-    }
-  }
-};
-
-const countTokens = async (model, text) => {
-  if (!text) return 0;
-
-  try {
-    const result = await model.countTokens(text);
-    return result.totalTokens ?? 0;
-  } catch {
-    return 0;
-  }
-};
-
-const logTokenUsage = async ({
-  stage,
-  model,
-  systemPrompt = "",
-  history = "",
-  userQuery = "",
-  fullPrompt = "",
-  response,
-}) => {
-  const usage = response?.response?.usageMetadata;
-
-  const [systemTokens, historyTokens, userTokens, promptTokens] =
-    await Promise.all([
-      countTokens(model, systemPrompt),
-      countTokens(model, history),
-      countTokens(model, userQuery),
-      countTokens(model, fullPrompt),
-    ]);
-
-  console.log(`
-┌──────────────────────────────────────────────────────────────┐
-│ 🤖 GEMINI TOKEN USAGE                                        │
-├──────────────────────────────────────────────────────────────┤
-│ Stage              ${stage.padEnd(38)}
-│ Формат данных      ${SERIALIZATION_FORMAT.toUpperCase().padEnd(38)}
-├──────────────────────────────────────────────────────────────┤
-│ 📜 System prompt   ${String(systemTokens).padStart(6)} токенов
-│ 🕓 History         ${String(historyTokens).padStart(6)} токенов
-│ 👤 User query      ${String(userTokens).padStart(6)} токенов
-│──────────────────────────────────────────────────────────────│
-│ 📤 Prompt total    ${String(promptTokens).padStart(6)} токенов
-│ 📥 Gemini answer   ${String(usage?.candidatesTokenCount ?? 0).padStart(6)} токенов
-│──────────────────────────────────────────────────────────────│
-│ 💰 API Prompt      ${String(usage?.promptTokenCount ?? 0).padStart(6)}
-│ 💰 API Total       ${String(usage?.totalTokenCount ?? 0).padStart(6)}
-└──────────────────────────────────────────────────────────────┘
-`);
-};
-
-const buildInterpretedLabel = (p) => {
-  const parts = [];
-  if (p.search_query) parts.push(`поиск: "${p.search_query}"`);
-  if (p.exclude_query) parts.push(`без: "${p.exclude_query}"`);
-  if (p.category) parts.push(`категория: ${p.category}`);
-  if (p.min_calories) parts.push(`ккал от ${p.min_calories}`);
-  if (p.max_calories) parts.push(`ккал до ${p.max_calories}`);
-  if (p.min_proteins) parts.push(`белок ≥ ${p.min_proteins} г`);
-  if (p.max_price) parts.push(`цена ≤ ${p.max_price} BYN`);
-  if (p.is_vegetarian) parts.push("вегетарианское");
-  if (p.is_gluten_free) parts.push("без глютена");
-  if (p.is_dairy_free) parts.push("без молочного");
-  if (p.is_spicy) parts.push("острое");
-  if (p.cooking_method) parts.push(p.cooking_method);
-  if (p.meal_time) parts.push(p.meal_time);
-  if (p.sort_by) parts.push(`сортировка: ${p.sort_by}`);
-  return parts.join(", ") || "все блюда";
-};
-
-const buildHistoryContext = (history) => {
-  if (!history.length) return "";
-  const rows = history.map((h) => ({
-    role: h.role,
-    content: h.content.slice(0, 150),
-    filters: h.search_params ? buildInterpretedLabel(h.search_params) : "",
-  }));
-  return (
-    `\nИстория диалога (формат ${SERIALIZATION_FORMAT.toUpperCase()}):\n` +
-    serializeData(rows) +
-    "\n"
-  );
-};
-
-// ════════════════════════════════════════════════════════════════════════════
-// SEARCH LOGGING (молча пропускается если таблицы нет)
-// ════════════════════════════════════════════════════════════════════════════
 
 const logSearch = async ({
   endpoint,
@@ -492,14 +130,8 @@ const logSearch = async ({
         cached ? 1 : 0,
       ],
     );
-  } catch {
-    /* search_log не создана — ничего не делаем */
-  }
+  } catch {}
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// SQL BUILDER
-// ════════════════════════════════════════════════════════════════════════════
 
 const buildDishQuery = (searchParams, limit) => {
   const safeLimit = Math.floor(
@@ -706,114 +338,6 @@ const tryRelaxedSearch = async (searchParams, limit) => {
   return { rows: [], relaxedParams: null };
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// РАНЖИРОВАНИЕ КАНДИДАТОВ ЧЕРЕЗ GEMINI
-// ════════════════════════════════════════════════════════════════════════════
-//
-// Здесь модель отвечает строго JSON-объектом {selected_ids, recommendation} —
-// это короткий фиксированный ответ (пара чисел + пара предложений), выгоды
-// от TOON на выходе тут нет, а JSON-режим даёт гарантию валидного синтаксиса.
-// TOON применяется только на ВХОДЕ — к массиву кандидатов (serializeData).
-
-const toCandidatePayload = (rows) =>
-  rows.map((d) => ({
-    id: d.id,
-    title: d.title,
-    description: d.description
-      ? d.description.slice(0, RANK_DESC_TRUNCATE)
-      : null,
-    price: d.price,
-    calories: d.calories,
-    proteins: d.proteins,
-  }));
-
-const buildRankingPrompt = (query, candidates, historyContext, limit) =>
-  `
-Ты — нутрициолог-консультант приложения доставки здоровой еды.
-Запрос пользователя: "${query}"
-${historyContext}
-
-Список блюд-кандидатов (уже прошли базовую фильтрацию по бюджету/категории/КБЖУ),
-в формате ${SERIALIZATION_FORMAT.toUpperCase()} (поля: id, title, description, price, calories, proteins):
-
-${serializeData(candidates)}
-
-Выбери и упорядочи по релевантности до ${limit} блюд, которые лучше всего
-соответствуют смыслу запроса — учитывай нюансы, которые не ловятся обычным
-поиском по словам: повод, настроение, сочетаемость, степень соответствия теме.
-Если ни одно блюдо не подходит — верни пустой массив.
-
-Верни ТОЛЬКО валидный JSON без пояснений и markdown:
-{
-  "selected_ids": [число, число, ...],
-  "recommendation": "2-3 предложения, аппетитно, на вы, без цен, или null"
-}
-`.trim();
-
-const rankCandidatesWithGemini = async (
-  query,
-  candidates,
-  limit,
-  historyContext = "",
-) => {
-  if (candidates.length === 0) return { selectedIds: [], recommendation: null };
-
-  const model = genAI.getGenerativeModel({
-    model: "gemini-3.1-flash-lite",
-    generationConfig: { responseMimeType: "application/json" },
-  });
-
-  try {
-    const candidatesPayload = toCandidatePayload(candidates);
-    const candidatesSerialized = serializeData(candidatesPayload);
-
-    const prompt = buildRankingPrompt(
-      query,
-      candidatesPayload,
-      historyContext,
-      limit,
-    );
-
-    const raw = await geminiWithRetry(() => model.generateContent(prompt));
-
-    const candidatesTokens = await countTokens(model, candidatesSerialized);
-
-    await logTokenUsage({
-      stage: "RANKING",
-      model,
-      systemPrompt: "Ranking prompt",
-      history: historyContext,
-      userQuery: query,
-      fullPrompt: prompt,
-      response: raw,
-    });
-
-    console.log(`
-┌────────────────────────────────────────────┐
-│ 📦 CANDIDATES                              │
-├────────────────────────────────────────────┤
-│ Format      ${SERIALIZATION_FORMAT.padEnd(15)}
-│ Count       ${String(candidates.length).padEnd(15)}
-│ Tokens      ${String(candidatesTokens).padEnd(15)}
-└────────────────────────────────────────────┘
-`);
-    const parsed = safeJsonParse(raw.response.text());
-    const ids = Array.isArray(parsed.selected_ids)
-      ? parsed.selected_ids.map(Number).filter(Number.isFinite)
-      : [];
-    return {
-      selectedIds: ids,
-      recommendation:
-        typeof parsed.recommendation === "string"
-          ? parsed.recommendation
-          : null,
-    };
-  } catch (err) {
-    console.error("[rankCandidatesWithGemini]", err.message);
-    return { selectedIds: null, recommendation: null };
-  }
-};
-
 const applyRanking = (candidates, selectedIds, limit) => {
   if (!selectedIds) return candidates.slice(0, limit);
   if (selectedIds.length === 0) return [];
@@ -830,10 +354,6 @@ const applyRanking = (candidates, selectedIds, limit) => {
   }
   return ordered.slice(0, limit);
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// MULTI-SLOT
-// ════════════════════════════════════════════════════════════════════════════
 
 const executeMultiSlot = async (slots) => {
   const results = await Promise.all(
@@ -857,281 +377,6 @@ const executeMultiSlot = async (slots) => {
     return true;
   });
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// GEMINI ПРОМПТЫ
-// ════════════════════════════════════════════════════════════════════════════
-
-const SEARCH_PARAMS_RULES = (categories) =>
-  `
-ПРАВИЛА для search_params / слота:
-0. СНАЧАЛА исправь очевидные опечатки ...
-
-1. "search_query" — максимум 3–4 ключевых слова в именительном падеже.
-   НЕ раскрывай группы продуктов в списки синонимов — пиши одно общее слово:
-   "фрукты" (не "яблоки бананы манго персики"), "ягоды" (не "клубника малина черника").
-   Абстракции ("вкусное", "полезное") → null.
-   Синонимы пиши вместе только для неоднозначных слов: "помидоры томаты".
-
-2. "exclude_query" — ТОЛЬКО исключения. Никогда не пиши "без", "не" в search_query.
-   В exclude_query — раскрывай группы ПОЛНОСТЬЮ:
-   * без ягод    → "ягоды клубника малина черника голубика брусника вишня ежевика"
-   * без фруктов    → "фрукты яблоки бананы манго персики груши киви ананасы апельсины лимоны"
-   * без орехов     → "орехи кешью миндаль арахис кокос семечки фисташки фундук грецкий"
-   * без овощей     → "овощи помидоры томаты огурцы перец перцы морковь лук чеснок капуста баклажаны кабачки"
-   * без мяса       → "мясо курица индейка говядина свинина бекон стейк колбаса фарш сосиски"
-   * без молочного  → "молоко сыр творог сметана кефир йогурт сливки масло"
-   * без глютена    → "мука хлеб макароны паста лапша блины тесто выпечка пшеница"
-
-3. Числовые фильтры:
-   "около N ккал" / "примерно N ккал" → min_calories: N*0.8, max_calories: N*1.2
-   "не больше N"   → max_calories: N, min_calories: null
-   "от N до M"     → min_calories: N, max_calories: M
-   "с высоким белком" → min_proteins: 25
-   "богатое белком"   → min_proteins: 20
-
-4. Флаги (true только при явном запросе):
-   вегетарианское/без мяса и рыбы → is_vegetarian: true
-   веганское                       → is_vegan: true
-   без глютена/безглютеновое       → is_gluten_free: true
-   без молочного/безлактозное      → is_dairy_free: true
-   острое/пикантное/с перцем чили  → is_spicy: true
-
-5. cooking_method:
-   запеченное/в духовке/в фольге → "запеченное"
-   вареное/отварное              → "вареное"
-   на пару/паровое               → "на пару"
-   жареное/на гриле/на сковороде → "жареное"
-   тушеное/в соусе               → "тушеное"
-   сырое/без термообработки      → "сырое"
-   Иначе → null
-
-6. meal_time (если явно упомянуто время суток):
-   на завтрак / утром            → "завтрак"
-   на обед / в обед              → "обед"
-   на ужин / вечером             → "ужин"
-   перекус / снэк                → "перекус"
-   Иначе → null (category уже отвечает за это)
-
-7. "category" — строго точное название из: ${categories.join(", ")}. Иначе null.
-
-8. "sort_by":
-   дешёвое/бюджетное → "price_asc"  |  дорогое → "price_desc"
-   лёгкое/диетическое → "kcal_asc"  |  калорийное/сытное → "kcal_desc"
-
-9. "query_logic":
-   AND — одно составное блюдо ("каша с ягодами", "стейк из свинины")
-   OR  — несколько разных блюд ("чай или сок", "суп или салат")
-`.trim();
-
-const buildParserPrompt = (query, categories) =>
-  `
-Ты — ИИ-парсер для поиска здоровой еды. Проанализируй запрос на русском языке.
-Верни ТОЛЬКО валидный JSON без пояснений и markdown:
-{
-  "search_query":  "слова для поиска или null",
-  "exclude_query": "слова для исключения или null",
-  "min_calories":  число или null,
-  "max_calories":  число или null,
-  "min_proteins":  число или null,
-  "max_price":     число или null,
-  "category":      "точное название категории или null",
-  "sort_by":       "price_asc" | "price_desc" | "kcal_asc" | "kcal_desc" | null,
-  "query_logic":   "AND" | "OR",
-  "is_vegetarian": true | null,
-  "is_vegan":      true | null,
-  "is_gluten_free":true | null,
-  "is_dairy_free": true | null,
-  "is_spicy":      true | null,
-  "cooking_method":"запеченное" | "вареное" | "жареное" | "на пару" | "сырое" | "тушеное" | null,
-  "meal_time":     "завтрак" | "обед" | "ужин" | "перекус" | null
-}
-
-${SEARCH_PARAMS_RULES(categories)}
-
-Запрос: "${query}"
-`.trim();
-
-// Эталонные примеры генерируются через настоящий toToon() — а не пишутся
-// руками — чтобы синтаксис в промпте гарантированно совпадал с тем, что
-// поймёт toonDecode() на стороне сервера (см. safeToonDecode выше). Любое
-// расхождение между "описанием формата словами" и реальной грамматикой TOON
-// — источник сбоев парсинга; генерация примера из кода устраняет это по
-// построению.
-const TOON_SINGLE_EXAMPLE = toToon({
-  search_params: {
-    search_query: "лёгкий обед",
-    exclude_query: null,
-    min_calories: null,
-    max_calories: 400,
-    min_proteins: null,
-    max_price: null,
-    category: null,
-    sort_by: null,
-    query_logic: "OR",
-    is_vegetarian: true,
-    is_vegan: null,
-    is_gluten_free: null,
-    is_dairy_free: null,
-    is_spicy: null,
-    cooking_method: null,
-    meal_time: "обед",
-  },
-  search_slots: null,
-  recommendation: "Отличный выбор! Рекомендую лёгкий салат или боул.",
-  not_found_message: null,
-});
-
-const TOON_MULTISLOT_EXAMPLE = toToon({
-  search_params: null,
-  search_slots: [
-    {
-      search_query: "мясо стейк курица",
-      exclude_query: null,
-      category: null,
-      query_logic: "OR",
-      max_calories: null,
-      min_proteins: null,
-      max_price: null,
-    },
-    {
-      search_query: "салат",
-      exclude_query: null,
-      category: null,
-      query_logic: "OR",
-      max_calories: null,
-      min_proteins: null,
-      max_price: null,
-    },
-  ],
-  recommendation: "Вот отличный обед!",
-  not_found_message: null,
-});
-
-const buildChatPrompt = (query, categories, historyContext) =>
-  `
-Ты — заботливый нутрициолог-консультант приложения доставки здоровой еды.
-Проанализируй текущий запрос с учётом истории и верни ответ СТРОГО в формате TOON.
-Никакого markdown, никаких оберток \`\`\`, никакого текста до или после — только сам TOON.
-Ответ ВСЕГДА содержит ровно эти 4 верхнеуровневых ключа:
-search_params, search_slots, recommendation, not_found_message.
-
-Пример обычного ответа (search_slots: null):
-${TOON_SINGLE_EXAMPLE}
-
-Пример мульти-слот ответа (search_params: null, несколько позиций сразу):
-${TOON_MULTISLOT_EXAMPLE}
-
-СТРОГО следуй этому синтаксису: отступ в 2 пробела для вложенных полей,
-табличный заголовок вида search_slots[N]{поле1,поле2,...}: для массива слотов.
-
-Доступные категории: ${categories.join(", ")}.
-${historyContext}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-МУЛЬТИ-СЛОТ (search_slots)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Используй search_slots ВМЕСТО search_params ТОЛЬКО если пользователь явно просит
-несколько разных позиций одновременно: "мясное + салат + напиток", "суп + горячее + десерт".
-При мульти-слоте → search_params: null.
-В остальных случаях → search_slots: null.
-
-${SEARCH_PARAMS_RULES(categories)}
-
-ПРАВИЛА ИСТОРИИ:
-- Уточнение ("а подешевле", "без лука", "добавь is_gluten_free") → корректируй только нужный фильтр.
-- Смена темы → сбрось все фильтры.
-
-ПРАВИЛА ТЕКСТОВЫХ ПОЛЕЙ:
-- "recommendation": 2–3 предложения, аппетитно, на "вы", без цен.
-- "not_found_message": теоретический вопрос → научный ответ нутрициолога 3–5 предл.;
-  еда не найдена → вежливо извинись, предложи конкретную альтернативу.
-
-Запрос: "${query}"
-`.trim();
-
-// ════════════════════════════════════════════════════════════════════════════
-// GEMINI ВЫЗОВЫ (с кэшированием)
-// ════════════════════════════════════════════════════════════════════════════
-
-const parseQueryWithGemini = async (query, categories) => {
-  const cacheKey = `parser::${normalizeQueryKey(query)}::${categories.join(",")}`;
-  if (geminiCache.has(cacheKey)) {
-    console.log("[Gemini cache HIT] parser:", query);
-    return { result: geminiCache.get(cacheKey), cached: true };
-  }
-  const model = genAI.getGenerativeModel({
-    model: "gemini-3.1-flash-lite",
-    generationConfig: { responseMimeType: "application/json" },
-  });
-  const systemPrompt = SEARCH_PARAMS_RULES(categories);
-
-  const prompt = buildParserPrompt(query, categories);
-
-  const raw = await geminiWithRetry(() => model.generateContent(prompt));
-
-  await logTokenUsage({
-    stage: "SEARCH",
-    model,
-    systemPrompt,
-    history: "",
-    userQuery: query,
-    fullPrompt: prompt,
-    response: raw,
-  });
-  const result = validateSearchParams(safeJsonParse(raw.response.text()));
-  geminiCache.set(cacheKey, result);
-  return { result, cached: false };
-};
-
-const getChatGeminiResponse = async (query, categories, history) => {
-  const cacheKey =
-    history.length === 0
-      ? `chat::${normalizeQueryKey(query)}::${categories.join(",")}`
-      : null;
-
-  if (cacheKey && geminiCache.has(cacheKey)) {
-    console.log("[Gemini cache HIT] chat:", query);
-    return { ...geminiCache.get(cacheKey), cached: true };
-  }
-
-  // ВАЖНО: responseMimeType: "application/json" здесь НЕ ставим. Этот режим
-  // форсирует синтаксис JSON на уровне API вне зависимости от текста промпта
-  // — вместе с инструкцией "отвечай в TOON" это взаимоисключающие требования.
-  // Без responseMimeType используется свободный текстовый вывод (по факту
-  // эквивалент text/plain), что и нужно для генерации настоящего TOON.
-  const model = genAI.getGenerativeModel({
-    model: "gemini-3.1-flash-lite",
-  });
-  const historyText = buildHistoryContext(history);
-
-  const systemPrompt = SEARCH_PARAMS_RULES(categories);
-
-  const prompt = buildChatPrompt(query, categories, historyText);
-
-  const raw = await geminiWithRetry(() => model.generateContent(prompt));
-
-  await logTokenUsage({
-    stage: "CHAT",
-    model,
-    systemPrompt,
-    history: historyText,
-    userQuery: query,
-    fullPrompt: prompt,
-    response: raw,
-  });
-
-  const parsed = safeToonDecode(raw.response.text());
-  parsed.search_params = validateSearchParams(parsed.search_params);
-  parsed.search_slots = validateSearchSlots(parsed.search_slots);
-
-  if (cacheKey) geminiCache.set(cacheKey, parsed);
-  return { ...parsed, cached: false };
-};
-
-// ════════════════════════════════════════════════════════════════════════════
-// FALLBACK — при полном сбое Gemini
-// ════════════════════════════════════════════════════════════════════════════
 
 const fallbackTextSearch = async (searchText, res) => {
   try {
@@ -1184,10 +429,6 @@ const fallbackTextSearch = async (searchText, res) => {
     return res.status(500).json({ message: "Ошибка сервера" });
   }
 };
-
-// ════════════════════════════════════════════════════════════════════════════
-// CONTROLLERS
-// ════════════════════════════════════════════════════════════════════════════
 
 export const getAllDishes = async (req, res) => {
   const { category, search, sortBy } = req.query;
@@ -1266,19 +507,17 @@ export const getSmartSearch = async (req, res) => {
 
   const resultsCacheKey = `smart::${normalizeQueryKey(query)}`;
   if (resultsCache.has(resultsCacheKey)) {
-    console.log("[Results cache HIT] smart:", query);
     return res.status(200).json(resultsCache.get(resultsCacheKey));
   }
 
-  let geminiCached = false;
+  let aiCached = false;
   try {
     const categories = await fetchCategories();
-    const { result: searchParams, cached } = await parseQueryWithGemini(
+    const { result: searchParams, cached } = await aiProvider.parseQuery(
       query,
       categories,
     );
-    geminiCached = cached;
-    console.log("=== УМНЫЙ ПОИСК: параметры ===", searchParams);
+    aiCached = cached;
 
     const { sql, params } = buildDishQuery(searchParams, CANDIDATE_POOL_SMART);
     let [rows] = await db.execute(sql, params);
@@ -1291,15 +530,13 @@ export const getSmartSearch = async (req, res) => {
       );
       rows = relaxed.rows;
       relaxedParams = relaxed.relaxedParams;
-      if (relaxedParams)
-        console.log("=== УМНЫЙ ПОИСК: relaxed сработал ===", relaxedParams);
     }
 
     let finalDishes = rows.slice(0, SMART_SEARCH_LIMIT);
     let rankingUsed = false;
 
     if (rows.length > SMART_SEARCH_LIMIT) {
-      const { selectedIds } = await rankCandidatesWithGemini(
+      const { selectedIds } = await aiProvider.rankCandidates(
         query,
         rows,
         SMART_SEARCH_LIMIT,
@@ -1307,20 +544,17 @@ export const getSmartSearch = async (req, res) => {
       if (selectedIds !== null) {
         finalDishes = applyRanking(rows, selectedIds, SMART_SEARCH_LIMIT);
         rankingUsed = true;
-        console.log(
-          `=== УМНЫЙ ПОИСК: ранжирование применено (${rows.length} → ${finalDishes.length}) ===`,
-        );
       }
     }
 
     const response = {
       dishes: finalDishes,
       meta: {
-        interpreted_as: buildInterpretedLabel(searchParams),
+        interpreted_as: aiProvider.buildInterpretedLabel(searchParams),
         filters_applied: searchParams,
         ranking_used: rankingUsed,
         ...(relaxedParams
-          ? { relaxed_to: buildInterpretedLabel(relaxedParams) }
+          ? { relaxed_to: aiProvider.buildInterpretedLabel(relaxedParams) }
           : {}),
       },
     };
@@ -1335,12 +569,12 @@ export const getSmartSearch = async (req, res) => {
       fallback: false,
       relaxed: !!relaxedParams,
       ranking: rankingUsed,
-      cached: geminiCached,
+      cached: aiCached,
     });
 
     return res.status(200).json(response);
   } catch (err) {
-    console.error("[getSmartSearch] Gemini error — fallback:", err.message);
+    console.error("[getSmartSearch] AI error — fallback:", err.message);
     logSearch({
       endpoint: "smart",
       query,
@@ -1371,18 +605,12 @@ export const getAIChatResponse = async (req, res) => {
       recommendation,
       not_found_message,
       cached,
-    } = await getChatGeminiResponse(query, categories, history);
-
-    console.log("=== ЧАТ: Gemini response ===", {
-      search_params,
-      search_slots,
-    });
+    } = await aiProvider.chat(query, categories, history);
 
     let dishes = [];
     let message = "";
 
     if (search_slots) {
-      console.log("=== ЧАТ: мульти-слот, слотов:", search_slots.length);
       dishes = await executeMultiSlot(search_slots);
       message =
         dishes.length > 0
@@ -1452,8 +680,8 @@ export const getAIChatResponse = async (req, res) => {
         let rankRecommendation = null;
 
         if (dbRows.length > CHAT_DISHES_LIMIT) {
-          const historyContext = buildHistoryContext(history);
-          const ranked = await rankCandidatesWithGemini(
+          const historyContext = aiProvider.buildHistoryContext(history);
+          const ranked = await aiProvider.rankCandidates(
             query,
             dbRows,
             CHAT_DISHES_LIMIT,

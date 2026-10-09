@@ -1,6 +1,8 @@
 /**
  * SearchBar.tsx
  * Компонент поиска с голосовым вводом (iOS / Android / Web).
+ * Голосовой ввод работает в режиме push-to-talk:
+ * зажали микрофон — идёт запись, отпустили — сообщение отправляется сразу.
  *
  * Зависимости:
  *   - @react-native-voice/voice   — нативный STT (iOS + Android)
@@ -74,6 +76,18 @@ export interface SearchBarProps {
   value?: string;
   onChangeText?: (text: string) => void;
   onSubmitEditing?: () => void;
+  /**
+   * Вызывается с финальным распознанным текстом сразу после того,
+   * как пользователь отпустил кнопку микрофона (push-to-talk).
+   * Предназначен для мгновенной отправки сообщения, минуя поле ввода.
+   */
+  onVoiceResult?: (text: string) => void;
+  /**
+   * Минимальная длительность удержания (мс), ниже которой нажатие
+   * считается случайным тапом и запись отменяется без отправки.
+   * По умолчанию 250мс.
+   */
+  minHoldDurationMs?: number;
 }
 
 // ── Хелперы динамической загрузки нативного модуля ──────────────────────────
@@ -113,6 +127,8 @@ export default function SearchBar({
   value = "",
   onChangeText,
   onSubmitEditing,
+  onVoiceResult,
+  minHoldDurationMs = 250,
 }: SearchBarProps) {
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +142,27 @@ export default function SearchBar({
   const auraLoop = useRef<Animated.CompositeAnimation | null>(null);
 
   const webRecognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+
+  // ── Служебные refs для push-to-talk ─────────────────────────────────────
+  // Последний распознанный (финальный/промежуточный) текст.
+  const lastTranscriptRef = useRef<string>("");
+  // Флаг: пользователь уже отпустил кнопку, ждём финальный результат,
+  // чтобы отправить его через onVoiceResult.
+  const shouldSendOnStopRef = useRef(false);
+  // Время нажатия — чтобы отфильтровать случайные короткие тапы.
+  const pressStartTimeRef = useRef(0);
+  // Предохранитель на случай, если событие завершения распознавания
+  // (onend / onSpeechResults) не пришло вовсе.
+  const sendFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const clearSendFallback = useCallback(() => {
+    if (sendFallbackTimeoutRef.current) {
+      clearTimeout(sendFallbackTimeoutRef.current);
+      sendFallbackTimeoutRef.current = null;
+    }
+  }, []);
 
   // ── Пульс-анимация и дыхание ауры ──────────────────────────────────────
   const startPulse = useCallback(() => {
@@ -180,28 +217,28 @@ export default function SearchBar({
   useEffect(() => {
     return () => {
       stopPulse();
+      clearSendFallback();
       if (Platform.OS !== "web") {
         getVoice().then((Voice) => Voice?.destroy().catch(() => {}));
       } else {
         webRecognitionRef.current?.abort();
       }
     };
-  }, [stopPulse]);
+  }, [stopPulse, clearSendFallback]);
 
-  // ── Остановка записи ────────────────────────────────────────────────────
+  // ── Остановка записи (без отправки — используется и для "отмены") ──────
   const stopListening = useCallback(async () => {
     setIsListening(false);
     stopPulse();
 
     if (Platform.OS === "web") {
+      // Финальный текст придёт в recognition.onend
       webRecognitionRef.current?.stop();
-      webRecognitionRef.current = null;
     } else {
       const Voice = await getVoice();
       try {
+        // Финальный текст придёт в Voice.onSpeechResults / onSpeechEnd
         await Voice?.stop();
-        await Voice?.destroy();
-        Voice?.removeAllListeners();
       } catch {
         /* ignore */
       }
@@ -221,16 +258,19 @@ export default function SearchBar({
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "ru-RU";
     recognition.interimResults = true;
-    recognition.continuous = false;
+    // continuous: true, чтобы сессия не завершалась сама по себе,
+    // пока пользователь держит палец на кнопке.
+    recognition.continuous = true;
 
     webRecognitionRef.current = recognition;
+    lastTranscriptRef.current = "";
 
     recognition.onresult = (event: any) => {
       const currentTranscript = Array.from(event.results)
         .map((result: any) => result[0].transcript)
         .join("");
 
-      console.log("Браузер распознал:", currentTranscript);
+      lastTranscriptRef.current = currentTranscript;
 
       if (onChangeText) {
         onChangeText(currentTranscript);
@@ -250,6 +290,14 @@ export default function SearchBar({
       setIsListening(false);
       stopPulse();
       webRecognitionRef.current = null;
+
+      // Сессия реально завершилась — если это произошло после
+      // отпускания кнопки, отправляем накопленный текст.
+      clearSendFallback();
+      if (shouldSendOnStopRef.current && lastTranscriptRef.current.trim()) {
+        onVoiceResult?.(lastTranscriptRef.current.trim());
+      }
+      shouldSendOnStopRef.current = false;
     };
 
     try {
@@ -260,71 +308,72 @@ export default function SearchBar({
     } catch (e) {
       console.error("Не удалось запустить распознавание", e);
     }
-  }, [onChangeText, startPulse, stopPulse]);
+  }, [onChangeText, onVoiceResult, startPulse, stopPulse, clearSendFallback]);
 
   // ── Старт записи — NATIVE ───────────────────────────────────────────────
   const startListeningNative = useCallback(async () => {
-    console.log("=== ГОЛОС [1]: Нажат микрофон ===");
     const hasPermission = await requestMicPermission();
-    console.log("=== ГОЛОС [2]: Результат проверки прав ===", hasPermission);
     if (!hasPermission) {
       setError("Нет доступа к микрофону.");
       return;
     }
 
     const Voice = await getVoice();
-    console.log(
-      "=== ГОЛОС [3]: Модуль Voice успешно импортирован? ===",
-      !!Voice,
-    );
     if (!Voice) {
       setError("Голосовой поиск недоступен.");
       return;
     }
 
     try {
-      console.log("=== ГОЛОС [4]: Очистка старых слушателей ===");
       await Voice.destroy();
       Voice.removeAllListeners();
-    } catch (e) {
-      console.log("=== ГОЛОС [5]: Ошибка при очистке (это нормально) ===", e);
+    } catch {
+      /* ignore */
     }
 
-    Voice.onSpeechStart = (e) =>
-      console.log("=== ГОЛОС EVENT: Начало записи (onSpeechStart) ===", e);
-    Voice.onSpeechRecognized = (e) =>
-      console.log(
-        "=== ГОЛОС EVENT: Речь распознана (onSpeechRecognized) ===",
-        e,
-      );
+    lastTranscriptRef.current = "";
+
+    Voice.onSpeechStart = () => {};
+    Voice.onSpeechRecognized = () => {};
     Voice.onSpeechEnd = () => {
-      console.log("=== ГОЛОС EVENT: Запись завершена (onSpeechEnd) ===");
       setIsListening(false);
       stopPulse();
     };
     Voice.onSpeechError = (e) => {
-      console.log("=== ГОЛОС EVENT: Ошибка (onSpeechError) ===", e.error);
       const code = e.error?.code ?? "";
       if (code !== "5" && code !== "7") {
         setError(`Ошибка распознавания: ${e.error?.message ?? code}`);
       }
       setIsListening(false);
       stopPulse();
+
+      // Если ошибка пришла уже после отпускания кнопки — просто
+      // сбрасываем флаг отправки, отправлять нечего.
+      clearSendFallback();
+      shouldSendOnStopRef.current = false;
     };
     Voice.onSpeechResults = (e) => {
-      console.log("=== ГОЛОС EVENT: Результаты (onSpeechResults) ===", e.value);
       const result = e.value?.[0];
-      if (result) onChangeText?.(result);
+      if (result) {
+        lastTranscriptRef.current = result;
+        onChangeText?.(result);
+
+        // Кнопка уже отпущена — отправляем финальный текст сразу.
+        if (shouldSendOnStopRef.current) {
+          clearSendFallback();
+          onVoiceResult?.(result.trim());
+          shouldSendOnStopRef.current = false;
+        }
+      }
       setIsListening(false);
       stopPulse();
     };
     Voice.onSpeechPartialResults = (e) => {
-      console.log(
-        "=== ГОЛОС EVENT: Промежуточные результаты (onSpeechPartialResults) ===",
-        e.value,
-      );
       const partial = e.value?.[0];
-      if (partial) onChangeText?.(partial);
+      if (partial) {
+        lastTranscriptRef.current = partial;
+        onChangeText?.(partial);
+      }
     };
 
     setError(null);
@@ -332,32 +381,52 @@ export default function SearchBar({
     startPulse();
 
     try {
-      console.log("=== ГОЛОС [6]: Запуск Voice.start('ru-RU') ===");
       await Voice.start("ru-RU");
-      console.log("=== ГОЛОС [7]: Метод Voice.start() успешно выполнился ===");
     } catch (err: any) {
-      console.error(
-        "=== ГОЛОС [ОШИБКА]: Сбой при старте нативного движка ===",
-        err,
-      );
+      console.error("Сбой при старте нативного распознавания", err);
       setError(`Ошибка старта: ${err.message || err}`);
       setIsListening(false);
       stopPulse();
     }
-  }, [onChangeText, startPulse, stopPulse]);
+  }, [onChangeText, onVoiceResult, startPulse, stopPulse, clearSendFallback]);
 
-  // ── Переключатель ───────────────────────────────────────────────────────
-  const handleMicPress = useCallback(async () => {
-    if (isListening) {
-      await stopListening();
-      return;
-    }
+  // ── Push-to-talk: нажатие и отпускание ───────────────────────────────────
+  const handlePressIn = useCallback(async () => {
+    shouldSendOnStopRef.current = false;
+    clearSendFallback();
+    pressStartTimeRef.current = Date.now();
+
     if (Platform.OS === "web") {
       startListeningWeb();
     } else {
       await startListeningNative();
     }
-  }, [isListening, stopListening, startListeningWeb, startListeningNative]);
+  }, [startListeningWeb, startListeningNative, clearSendFallback]);
+
+  const handlePressOut = useCallback(async () => {
+    const heldFor = Date.now() - pressStartTimeRef.current;
+
+    // Слишком короткое нажатие — считаем случайным тапом,
+    // отменяем запись без отправки.
+    if (heldFor < minHoldDurationMs) {
+      shouldSendOnStopRef.current = false;
+      await stopListening();
+      return;
+    }
+
+    // Помечаем, что после получения финального результата
+    // (onend / onSpeechResults) нужно отправить сообщение.
+    shouldSendOnStopRef.current = true;
+    await stopListening();
+
+    // Предохранитель: если событие завершения не придёт за 1.5с
+    // (например, распознаватель ничего не уловил), не оставляем
+    // "зависший" флаг ожидания отправки.
+    clearSendFallback();
+    sendFallbackTimeoutRef.current = setTimeout(() => {
+      shouldSendOnStopRef.current = false;
+    }, 1500);
+  }, [stopListening, minHoldDurationMs, clearSendFallback]);
 
   // ── Рендер ──────────────────────────────────────────────────────────────
   const micColor = isListening ? COLORS.primary : COLORS.textLight;
@@ -388,7 +457,11 @@ export default function SearchBar({
       {/* Текстовое поле */}
       <TextInput
         style={styles.input}
-        placeholder={isListening ? "Говорите..." : (error ?? placeholder)}
+        placeholder={
+          isListening
+            ? "Говорите... отпустите, чтобы отправить"
+            : (error ?? placeholder)
+        }
         placeholderTextColor={
           isListening ? COLORS.primary : error ? COLORS.error : COLORS.textLight
         }
@@ -400,6 +473,7 @@ export default function SearchBar({
         onSubmitEditing={onSubmitEditing}
         returnKeyType="search"
         showSoftInputOnFocus={!isListening}
+        editable={!isListening}
       />
 
       {/* Кнопка очистки */}
@@ -427,14 +501,18 @@ export default function SearchBar({
         </Pressable>
       )}
 
-      {/* Кнопка микрофона */}
+      {/* Кнопка микрофона (push-to-talk: зажать — говорить, отпустить — отправить) */}
       {(!value || isListening) && (
         <Pressable
-          onPress={handleMicPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          delayLongPress={0}
           hitSlop={8}
           style={styles.micBtn}
           accessibilityLabel={
-            isListening ? "Остановить запись" : "Голосовой поиск"
+            isListening
+              ? "Отпустите, чтобы отправить"
+              : "Зажмите для голосового ввода"
           }
           accessibilityRole="button"
         >

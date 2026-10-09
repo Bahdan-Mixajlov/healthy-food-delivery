@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import HomeStack from "./HomeStack";
 import MenuScreen from "../screens/MenuScreen";
 import CartScreen from "../screens/CartScreen";
+import FoodDiaryScreen from "../screens/FoodDiaryScreen";
 import ProfileStack from "./ProfileStack";
 import { COLORS } from "../constants/theme";
 
@@ -33,6 +34,7 @@ export default function TabNavigator() {
           if (route.name === "Главная") iconName = "home";
           else if (route.name === "Меню") iconName = "list-ul";
           else if (route.name === "Корзина") iconName = "shopping-cart";
+          else if (route.name === "Дневник") iconName = "camera";
           else if (route.name === "Профиль") iconName = "user";
 
           return <FontAwesome name={iconName} size={size} color={color} />;
@@ -42,6 +44,7 @@ export default function TabNavigator() {
       <Tab.Screen name="Главная" component={HomeStack} />
       <Tab.Screen name="Меню" component={MenuScreen} />
       <Tab.Screen name="Корзина" component={CartScreen} />
+      <Tab.Screen name="Дневник" component={FoodDiaryScreen} />
       <Tab.Screen name="Профиль" component={ProfileStack} />
     </Tab.Navigator>
   );

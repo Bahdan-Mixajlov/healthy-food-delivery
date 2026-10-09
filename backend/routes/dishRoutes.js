@@ -9,7 +9,7 @@ import {
 const router = express.Router();
 
 router.get("/search/smart", getSmartSearch);
-router.post("/search/chat", getAIChatResponse); // <--- ДОБАВЬТЕ ЭТОТ РОУТ (POST-запрос)
+router.post("/search/chat", getAIChatResponse);
 
 router.get("/", getAllDishes);
 router.get("/:id", getDishById);

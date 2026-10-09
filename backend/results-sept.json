@@ -1,0 +1,252 @@
+[
+  {
+    "file": "chicken-rice.jpg",
+    "ok": true,
+    "duration_ms": 6273,
+    "result": {
+      "items": [
+        {
+          "name": "Отварной рис (по-хайнаньски)",
+          "weight_g": 180,
+          "calories": 234,
+          "proteins": 4.5,
+          "fats": 3.6,
+          "carbs": 46
+        },
+        {
+          "name": "Отварная куриная грудка",
+          "weight_g": 120,
+          "calories": 198,
+          "proteins": 36,
+          "fats": 4.8,
+          "carbs": 0
+        }
+      ],
+      "total": {
+        "calories": 432,
+        "proteins": 40.5,
+        "fats": 8.4,
+        "carbs": 46
+      },
+      "confidence": "high",
+      "note": "Оценка веса произведена на основе стандартных порций для такого типа блюда (курица по-хайнаньски). Рис приготовлен с добавлением жира/бульона, что учтено в калорийности."
+    }
+  },
+  {
+    "file": "low-q.jpg",
+    "ok": false,
+    "duration_ms": 23817,
+    "error": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent: [503 Service Unavailable] This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."
+  },
+  {
+    "file": "pc.jpg",
+    "ok": true,
+    "duration_ms": 4523,
+    "result": {
+      "items": [],
+      "total": {
+        "calories": 0,
+        "proteins": 0,
+        "fats": 0,
+        "carbs": 0
+      },
+      "confidence": "high",
+      "note": "На фото изображено рабочее место с компьютером и монитором, продукты питания или готовые блюда отсутствуют."
+    }
+  },
+  {
+    "file": "photo_2026-09-24_14-50-50 (2).jpg",
+    "ok": true,
+    "duration_ms": 15698,
+    "result": {
+      "items": [
+        {
+          "name": "Яблочная шарлотка",
+          "weight_g": 350,
+          "calories": 840,
+          "proteins": 17,
+          "fats": 14,
+          "carbs": 161
+        }
+      ],
+      "total": {
+        "calories": 840,
+        "proteins": 17,
+        "fats": 14,
+        "carbs": 161
+      },
+      "confidence": "high",
+      "note": "Оценка веса произведена исходя из визуального объема кусочков шарлотки на тарелке. Расчет калорийности примерный для классического рецепта бисквита с яблоками."
+    }
+  },
+  {
+    "file": "photo_2026-09-24_14-50-50 (3).jpg",
+    "ok": false,
+    "duration_ms": 4878,
+    "error": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent: [503 Service Unavailable] This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."
+  },
+  {
+    "file": "photo_2026-09-24_14-50-50.jpg",
+    "ok": true,
+    "duration_ms": 13264,
+    "result": {
+      "items": [
+        {
+          "name": "Макароны отварные",
+          "weight_g": 200,
+          "calories": 280,
+          "proteins": 8,
+          "fats": 2,
+          "carbs": 56
+        },
+        {
+          "name": "Куриное филе отварное/тушеное",
+          "weight_g": 100,
+          "calories": 165,
+          "proteins": 31,
+          "fats": 3.6,
+          "carbs": 0
+        },
+        {
+          "name": "Салат из свежих томатов и соленых огурцов",
+          "weight_g": 150,
+          "calories": 35,
+          "proteins": 1.5,
+          "fats": 0.5,
+          "carbs": 6
+        }
+      ],
+      "total": {
+        "calories": 480,
+        "proteins": 40.5,
+        "fats": 6.1,
+        "carbs": 62
+      },
+      "confidence": "high",
+      "note": null
+    }
+  },
+  {
+    "file": "photo_2026-09-24_14-50-51.jpg",
+    "ok": true,
+    "duration_ms": 7505,
+    "result": {
+      "items": [
+        {
+          "name": "Макароны с яйцом",
+          "weight_g": 350,
+          "calories": 520,
+          "proteins": 18,
+          "fats": 16,
+          "carbs": 78
+        },
+        {
+          "name": "Жареное мясо/котлета",
+          "weight_g": 100,
+          "calories": 250,
+          "proteins": 19,
+          "fats": 18,
+          "carbs": 2
+        }
+      ],
+      "total": {
+        "calories": 770,
+        "proteins": 37,
+        "fats": 34,
+        "carbs": 80
+      },
+      "confidence": "medium",
+      "note": "Порции оценены приблизительно исходя из размера сковороды. Под макаронами частично виден кусок мясного изделия, оценка его веса и состава примерная."
+    }
+  },
+  {
+    "file": "podnos.jpg",
+    "ok": true,
+    "duration_ms": 6152,
+    "result": {
+      "items": [
+        {
+          "name": "Пенне с овощным соусом",
+          "weight_g": 180,
+          "calories": 270,
+          "proteins": 8,
+          "fats": 4,
+          "carbs": 50
+        },
+        {
+          "name": "Куриное филе на гриле",
+          "weight_g": 100,
+          "calories": 165,
+          "proteins": 23,
+          "fats": 7,
+          "carbs": 0
+        },
+        {
+          "name": "Салат из свежей зелени",
+          "weight_g": 40,
+          "calories": 10,
+          "proteins": 1,
+          "fats": 0.5,
+          "carbs": 1
+        },
+        {
+          "name": "Пшеничная булочка",
+          "weight_g": 50,
+          "calories": 140,
+          "proteins": 4,
+          "fats": 1,
+          "carbs": 28
+        },
+        {
+          "name": "Зеленое яблоко",
+          "weight_g": 150,
+          "calories": 75,
+          "proteins": 0.5,
+          "fats": 0.5,
+          "carbs": 19
+        },
+        {
+          "name": "Йогурт или напиток",
+          "weight_g": 150,
+          "calories": 90,
+          "proteins": 5,
+          "fats": 3,
+          "carbs": 10
+        }
+      ],
+      "total": {
+        "calories": 750,
+        "proteins": 41.5,
+        "fats": 16,
+        "carbs": 108
+      },
+      "confidence": "medium",
+      "note": "Оценка веса является приблизительной из-за отсутствия точных размеров посуды на фото."
+    }
+  },
+  {
+    "file": "soup.jpg",
+    "ok": true,
+    "duration_ms": 7023,
+    "result": {
+      "items": [
+        {
+          "name": "Куриный суп с фрикадельками",
+          "weight_g": 300,
+          "calories": 150,
+          "proteins": 12,
+          "fats": 7,
+          "carbs": 9
+        }
+      ],
+      "total": {
+        "calories": 150,
+        "proteins": 12,
+        "fats": 7,
+        "carbs": 9
+      },
+      "confidence": "medium",
+      "note": "Оценка веса приблизительная, так как на фото нет ориентиров масштаба."
+    }
+  }
+]

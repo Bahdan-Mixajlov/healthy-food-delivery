@@ -1,0 +1,61 @@
+﻿тЧЗ injected env (7) from .env // tip: тМШ custom filepath { path: '/custom/path/.env' }
+{
+  "items": [
+    {
+      "name": "╨Я╨╡╨╜╨╜╨╡ ╤Б ╤В╨╛╨╝╨░╤В╨╜╤Л╨╝ ╤Б╨╛╤Г╤Б╨╛╨╝",
+      "weight_g": 150,
+      "calories": 240,
+      "proteins": 7,
+      "fats": 3,
+      "carbs": 45
+    },
+    {
+      "name": "╨Ъ╤Г╤А╨╕╨╜╨╛╨╡ ╤Д╨╕╨╗╨╡ ╨│╤А╨╕╨╗╤М",
+      "weight_g": 80,
+      "calories": 130,
+      "proteins": 20,
+      "fats": 4,
+      "carbs": 0
+    },
+    {
+      "name": "╨Ь╨╕╨║╤Б ╤Б╨░╨╗╨░╤В ╨╕╨╖ ╨╖╨╡╨╗╨╡╨╜╨╕",
+      "weight_g": 30,
+      "calories": 10,
+      "proteins": 1,
+      "fats": 0.2,
+      "carbs": 1.5
+    },
+    {
+      "name": "╨С╤Г╨╗╨╛╤З╨║╨░ ╨┐╤И╨╡╨╜╨╕╤З╨╜╨░╤П",
+      "weight_g": 50,
+      "calories": 130,
+      "proteins": 4,
+      "fats": 1,
+      "carbs": 26
+    },
+    {
+      "name": "╨Ч╨╡╨╗╨╡╨╜╨╛╨╡ ╤П╨▒╨╗╨╛╨║╨╛",
+      "weight_g": 180,
+      "calories": 95,
+      "proteins": 0.5,
+      "fats": 0.3,
+      "carbs": 25
+    },
+    {
+      "name": "╨Щ╨╛╨│╤Г╤А╤В ╨╕╨╗╨╕ ╨║╨╡╤Д╨╕╤А",
+      "weight_g": 150,
+      "calories": 90,
+      "proteins": 5,
+      "fats": 3,
+      "carbs": 10
+    }
+  ],
+  "total": {
+    "calories": 695,
+    "proteins": 37.5,
+    "fats": 11.5,
+    "carbs": 107.5
+  },
+  "confidence": "high",
+  "note": null
+}

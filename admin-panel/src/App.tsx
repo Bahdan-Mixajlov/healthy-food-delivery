@@ -31,6 +31,30 @@ import { supabase } from "./supabaseClient";
 
 const API_URL = import.meta.env.VITE_API_URL;
 
+const EMPTY_DISH = {
+  id_category: 1,
+  name: "",
+  calories: 0,
+  proteins: 0,
+  fats: 0,
+  carbs: 0,
+  weight: 0,
+  price: 0,
+  description: "",
+  image_url: "",
+};
+
+const EMPTY_PLAN = {
+  name: "",
+  total_calories: 0,
+  proteins: 0,
+  fats: 0,
+  carbs: 0,
+  price: 0,
+  description: "",
+  image_url: "",
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState<
     | "orders"
@@ -53,29 +77,9 @@ function App() {
 
   const [imageFile, setImageFile] = useState<File | null>(null);
 
-  const [newDish, setNewDish] = useState({
-    id_category: 1,
-    name: "",
-    calories: 0,
-    proteins: 0,
-    fats: 0,
-    carbs: 0,
-    weight: 0,
-    price: 0,
-    description: "",
-    image_url: "",
-  });
+  const [newDish, setNewDish] = useState(EMPTY_DISH);
 
-  const [newPlan, setNewPlan] = useState({
-    name: "",
-    total_calories: 0,
-    proteins: 0,
-    fats: 0,
-    carbs: 0,
-    price: 0,
-    description: "",
-    image_url: "",
-  });
+  const [newPlan, setNewPlan] = useState(EMPTY_PLAN);
 
   useEffect(() => {
     const fetchCouriers = async () => {
@@ -158,8 +162,21 @@ function App() {
     }
   };
 
+  const resetDishForm = () => {
+    setEditingId(null);
+    setImageFile(null);
+    setNewDish(EMPTY_DISH);
+  };
+
+  const resetPlanForm = () => {
+    setEditingId(null);
+    setImageFile(null);
+    setNewPlan(EMPTY_PLAN);
+  };
+
   const startEditDish = (d: any) => {
     setEditingId(d.id);
+    setImageFile(null);
     setNewDish({
       id_category: d.id_category || 1,
       name: d.title,
@@ -177,6 +194,7 @@ function App() {
 
   const startEditPlan = (p: any) => {
     setEditingId(p.id);
+    setImageFile(null);
     setNewPlan({
       name: p.title,
       total_calories: p.calories || 0,
@@ -218,20 +236,7 @@ function App() {
 
       alert(editingId ? "Блюдо успешно обновлено!" : "Новое блюдо создано!");
 
-      setEditingId(null);
-      setImageFile(null);
-      setNewDish({
-        id_category: 1,
-        name: "",
-        calories: 0,
-        proteins: 0,
-        fats: 0,
-        carbs: 0,
-        weight: 0,
-        price: 0,
-        description: "",
-        image_url: "",
-      });
+      resetDishForm();
 
       setActiveTab("dishes_list");
     } catch (error: any) {
@@ -263,18 +268,7 @@ function App() {
 
       alert("План питания сохранен!");
 
-      setEditingId(null);
-      setImageFile(null);
-      setNewPlan({
-        name: "",
-        total_calories: 0,
-        proteins: 0,
-        fats: 0,
-        carbs: 0,
-        price: 0,
-        description: "",
-        image_url: "",
-      });
+      resetPlanForm();
 
       setActiveTab("plans_list");
     } catch (error) {
@@ -361,7 +355,7 @@ function App() {
         <p className="section-label">Создание</p>
         <button
           onClick={() => {
-            setEditingId(null);
+            resetDishForm();
             setActiveTab("add_dish");
           }}
           className={`nav-btn ${activeTab === "add_dish" ? "active" : ""}`}
@@ -370,7 +364,7 @@ function App() {
         </button>
         <button
           onClick={() => {
-            setEditingId(null);
+            resetPlanForm();
             setActiveTab("add_plan");
           }}
           className={`nav-btn ${activeTab === "add_plan" ? "active" : ""}`}
@@ -801,7 +795,7 @@ function App() {
                 <button
                   className="close-edit"
                   onClick={() => {
-                    setEditingId(null);
+                    resetDishForm();
                     setActiveTab("dishes_list");
                   }}
                 >
@@ -975,7 +969,7 @@ function App() {
                 <button
                   className="close-edit"
                   onClick={() => {
-                    setEditingId(null);
+                    resetPlanForm();
                     setActiveTab("plans_list");
                   }}
                 >

@@ -17,6 +17,7 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import ingredientRoutes from "./routes/ingredientRoutes.js";
 import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import mealLogRoutes from "./routes/mealLogRoutes.js";
 
 import { authenticateToken } from "./middleware/authMiddleware.js";
 
@@ -52,6 +53,7 @@ app.put("/api/clients/:id", authenticateToken, updateProfile);
 app.get("/api/addresses/:clientId", authenticateToken, getAddresses);
 app.post("/api/addresses", authenticateToken, addAddress);
 app.delete("/api/addresses/:id", authenticateToken, deleteAddress);
+app.use("/api/meal-log", authenticateToken, mealLogRoutes);
 
 app.get("/api/test", (req, res) => {
   res.json({ message: "Сервер успешно запущен" });

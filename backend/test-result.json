@@ -1,0 +1,250 @@
+[
+  {
+    "file": "apple-pie.jpg",
+    "ok": true,
+    "duration_ms": 3965,
+    "result": {
+      "items": [
+        {
+          "name": "шарлотка с яблоками",
+          "weight_g": 400,
+          "calories": 960,
+          "proteins": 20,
+          "fats": 24,
+          "carbs": 160
+        }
+      ],"total": {"calories": 960,"proteins": 20,"fats": 24,"carbs": 160},"confidence": "high","note": null
+    }
+  },
+  {
+    "file": "chicken-rice.jpg",
+    "ok": true,
+    "duration_ms": 8486,
+    "result": {
+      "items": [
+        {
+          "name": "Рис, отваренный на курином бульоне (тайский стиль)",
+          "weight_g": 200,
+          "calories": 260,
+          "proteins": 5,
+          "fats": 4.5,
+          "carbs": 50
+        },
+        {
+          "name": "Отварная куриная грудка",
+          "weight_g": 120,
+          "calories": 195,
+          "proteins": 36,
+          "fats": 4.8,
+          "carbs": 0
+        }
+      ],
+      "total": {
+        "calories": 455,
+        "proteins": 41,
+        "fats": 9.3,
+        "carbs": 50
+      },
+      "confidence": "high",
+      "note": null
+    }
+  },
+  {
+    "file": "chicken-vegetables-macaroni.jpg",
+    "ok": true,
+    "duration_ms": 2725,
+    "result": {
+      "items": [
+        {"name": "Макароны отварные","weight_g": 250,"calories": 380,"proteins": 12,"fats": 3,"carbs": 75
+        },
+        {"name": "Куриное филе отварное/тушеное","weight_g": 100,"calories": 165,"proteins": 23,"fats": 8,"carbs": 0
+        },
+        {"name": "Салат из свежих помидоров и соленых огурцов", "weight_g": 150,"calories": 35,"proteins": 1,"fats": 0.5,"carbs": 6
+        }
+      ],"total": {"calories": 580,"proteins": 36,"fats": 11.5,"carbs": 81},
+      "confidence": "medium","note": "Оценка веса является приблизительной из-за отсутствия эталона масштаба на фото."
+    }
+  },
+  {
+    "file": "homemade-lentil-soup-and-samosas-v0-wgeb0usaycrh1.jpg",
+    "ok": true,
+    "duration_ms": 5291,
+    "result": {
+      "items": [
+        {"name": "Чечевичный суп с овощами и сметаной","weight_g": 350,"calories": 240,"proteins": 12,"fats": 10,"carbs": 25
+        },
+        {"name": "Самосы (жареные пирожки с начинкой)","weight_g": 180,"calories": 540,"proteins": 15,"fats": 27,"carbs": 60
+        }
+      ],"total": {"calories": 780,"proteins": 27,"fats": 37,"carbs": 85
+      },"confidence": "medium","note": "Оценка веса является приблизительной, так как точный размер тарелки неизвестен. Калорийность самос может сильно варьироваться в зависимости от начинки и способа обжарки."
+    }
+  },
+  {
+    "file": "low-q.jpg",
+    "ok": true,
+    "duration_ms": 25587,
+    "result": {
+      "items": [
+        {"name": "Попкорн","weight_g": 60,"calories": 230,"proteins": 6,"fats": 10,"carbs": 30
+        },
+        {"name": "Снековая тарелка (чипсы, кукурузные снеки)","weight_g": 100,"calories": 520,"proteins": 6,"fats": 30,"carbs": 55
+        },
+        {"name": "Крекеры и соломка","weight_g": 50,"calories": 220,"proteins": 4,"fats": 8,"carbs": 32
+        },
+        {"name": "Фруктовая нарезка (яблоко, мандарин, черника)","weight_g": 150,"calories": 90,"proteins": 1,"fats": 0.5,"carbs": 22
+        },
+        {"name": "Банановые чипсы","weight_g": 70,"calories": 360,"proteins": 1.5,"fats": 23,"carbs": 38
+        },
+        {"name": "Напиток (предположительно вино)","weight_g": 150,"calories": 125,"proteins": 0,"fats": 0,"carbs": 4
+        },
+        {"name": "Какао или шоколадный напиток","weight_g": 200,"calories": 150,"proteins": 5,"fats": 6,"carbs": 20
+        }
+      ],"total": {"calories": 1695,"proteins": 23.5,"fats": 77.5,"carbs": 201
+      },"confidence": "medium","note": "Оценка веса является приблизительной из-за отсутствия точных масштабов предметов в кадре."
+    }
+  },
+  {
+    "file": "macaroni-kotleta.jpg",
+    "ok": true,
+    "duration_ms": 63545,
+    "result": {
+      "items": [
+        {
+          "name": "Макароны с яйцом",
+          "weight_g": 300,
+          "calories": 450,
+          "proteins": 15,
+          "fats": 14,
+          "carbs": 66
+        },
+        {
+          "name": "Куриное филе (жареное)",
+          "weight_g": 120,
+          "calories": 210,
+          "proteins": 30,
+          "fats": 9,
+          "carbs": 0
+        }
+      ],"total": {"calories": 660,"proteins": 45,"fats": 23,"carbs": 66},"confidence": "medium",
+      "note": "Оценка веса приблизительная, так как порция находится в сковороде без эталона размера. Учитывается наличие куриного филе под слоем макарон."
+    }
+  },
+  {
+    "file": "pc.jpg",
+    "ok": true,
+    "duration_ms": 7468,
+    "result": {
+      "items": [],
+      "total": {
+        "calories": 0,
+        "proteins": 0,
+        "fats": 0,
+        "carbs": 0
+      },
+      "confidence": "high",
+      "note": "На представленном фото отсутствуют продукты питания или готовые блюда. В кадре находится рабочее место с монитором, ноутбуком, клавиатурой, мышью и фигуркой супергероя."
+    }
+  },
+  {
+    "file": "plov.jpg",
+    "ok": true,
+    "duration_ms": 9498,
+    "result": {
+      "items": [
+        {
+          "name": "Рис с курицей и овощами (плов)",
+          "weight_g": 800,
+          "calories": 1280,
+          "proteins": 64,
+          "fats": 48,
+          "carbs": 144
+        }
+      ],"total": {"calories": 1280,"proteins": 64,"fats": 48,"carbs": 144},
+      "confidence": "medium","note": "Оценка веса блюда основана на стандартном размере сковороды 26-28 см. Калорийность и КБЖУ приведены для всей порции в сковороде, исходя из типичного состава (рис, куриная грудка, морковь, лук, растительное масло)."
+    }
+  },
+  {
+    "file": "podnos.jpg",
+    "ok": true,
+    "duration_ms": 9216,
+    "result": {
+      "items": [{"name": "Макароны с овощным соусом","weight_g": 200,"calories": 280,"proteins": 8,"fats": 4,"carbs": 52
+        },
+        {"name": "Куриное филе на гриле","weight_g": 100,"calories": 165,"proteins": 31,"fats": 4,"carbs": 0
+        },
+        {"name": "Салат из свежих листьев","weight_g": 50,"calories": 15,"proteins": 1,"fats": 0.5,"carbs": 2
+        },
+        {"name": "Булочка пшеничная","weight_g": 60,"calories": 150,"proteins": 5,"fats": 2,"carbs": 30
+        },
+        {"name": "Йогурт или кефир","weight_g": 150,"calories": 90,"proteins": 5,"fats": 3,"carbs": 10
+        },
+        {"name": "Яблоко зеленое","weight_g": 180,"calories": 95,"proteins": 0.5,"fats": 0.5,"carbs": 25
+        }
+      ],
+      "total": {"calories": 795,"proteins": 50.5,"fats": 14,"carbs": 119},
+      "confidence": "medium","note": "Оценка веса является приблизительной из-за отсутствия точных масштабов в кадре."
+    }
+  },
+  {
+    "file": "soup.jpg",
+    "ok": true,
+    "duration_ms": 16744,
+    "result": {
+      "items": [
+        {
+          "name": "Куриный суп с фрикадельками",
+          "weight_g": 300,
+          "calories": 150,
+          "proteins": 12,
+          "fats": 7,
+          "carbs": 9
+        }
+      ],
+      "total": {
+        "calories": 150,
+        "proteins": 12,
+        "fats": 7,
+        "carbs": 9
+      },
+      "confidence": "medium",
+      "note": "Оценка веса приблизительная, так как нет четких ориентиров размера посуды в кадре."
+    }
+  },
+  {
+    "file": "starbucks.jpg",
+    "ok": true,
+    "duration_ms": 23953,
+    "result": {
+      "items": [
+        {
+          "name": "Кофе (латте или капучино) в стакане Starbucks (размер Venti)",
+          "weight_g": 590,
+          "calories": 190,
+          "proteins": 8,
+          "fats": 7,
+          "carbs": 24
+        }
+      ],
+      "total": {"calories": 190,"proteins": 8,"fats": 7,"carbs": 24},
+      "confidence": "medium",
+      "note": "Это стакан размера Venti (ок. 590 мл). Состав напитка не виден, оценка калорийности приведена для классического латте на молоке 2% без добавления сахара. Оценка веса приблизительная, так как точный уровень жидкости внутри стакана неизвестен."
+    }
+  },
+  {
+    "file": "toast.jpg",
+    "ok": true,
+    "duration_ms": 4539,
+    "result": {
+      "items": [
+        {
+          "name": "Венская вафля с творожным кремом и голубикой",
+          "weight_g": 120,
+          "calories": 360,
+          "proteins": 8,
+          "fats": 18,
+          "carbs": 42
+        }
+      ],"total": {"calories": 360,"proteins": 8,"fats": 18,"carbs": 42},"confidence": "high","note": null
+    }
+  }
+]

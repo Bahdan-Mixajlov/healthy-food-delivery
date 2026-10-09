@@ -242,6 +242,19 @@ export default function AIChatScreen({ route, navigation }: any) {
     setToastVisible(true);
   };
 
+  // ── Голосовой ввод (push-to-talk) ────────────────────────────────────────────
+  // Вызывается сразу после того, как пользователь отпустил кнопку микрофона
+  // в SearchBar. Отправляет распознанный текст напрямую, минуя поле ввода,
+  // чтобы избежать гонки состояний с inputQuery.
+  const handleVoiceResult = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      setInputQuery("");
+      handleSendMessage(text);
+    },
+    [handleSendMessage],
+  );
+
   // ── Рендер текста ─────────────────────────────────────────────────────────────
 
   const renderMessageText = (text: string, isUser: boolean) =>
@@ -504,7 +517,6 @@ export default function AIChatScreen({ route, navigation }: any) {
         )}
 
         {/* Строка ввода */}
-        {/* Строка ввода */}
         <View
           style={[styles.inputContainer, { paddingBottom: inputPaddingBottom }]}
         >
@@ -513,6 +525,7 @@ export default function AIChatScreen({ route, navigation }: any) {
             value={inputQuery}
             onChangeText={setInputQuery}
             onSubmitEditing={() => handleSendMessage(inputQuery)}
+            onVoiceResult={handleVoiceResult}
           />
         </View>
       </KeyboardAvoidingView>
@@ -589,12 +602,10 @@ const styles = StyleSheet.create({
   },
   filterChipText: { fontSize: 12, color: COLORS.primary },
 
-  // ИЗМЕНЕНО: Добавлен gap для автоматических отступов между карточками
   dishesCarousel: {
     marginTop: 10,
     paddingBottom: 8,
   },
-  // ИЗМЕНЕНО: Убран marginRight, чтобы не ломать крайние отступы при прокрутке
   cardContainer: {
     width: 170,
   },
